@@ -8,7 +8,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
-import java.util.Hashtable;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map.Entry;
 import java.util.concurrent.Executors;
@@ -18,7 +18,6 @@ import java.util.concurrent.TimeUnit;
 
 import plusplus.util.ScheduledHandler;
 
-
 //Client test application
 public class Client implements Runnable {
 
@@ -26,7 +25,7 @@ public class Client implements Runnable {
 	private ScheduledExecutorService scheduledExecutorService;
 
 	// Hash table that monitor all input packets and its progress
-	private Hashtable<ScheduledHandler, ScheduledFuture<?>> table;
+	private HashMap<ScheduledHandler, ScheduledFuture<?>> map;
 
 	// Server hostname
 	private String hostname;
@@ -38,8 +37,8 @@ public class Client implements Runnable {
 	private SocketChannel socketChannel;
 
 	public Client(String hostname, int port, int threadPoolSize) {
-		this.scheduledExecutorService = Executors.newScheduledThreadPool(threadPoolSize);
-		this.table = new Hashtable<ScheduledHandler, ScheduledFuture<?>>();
+		this.scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+		this.map = new HashMap<ScheduledHandler, ScheduledFuture<?>>();
 		this.hostname = hostname;
 		this.port = port;
 	}
@@ -52,10 +51,18 @@ public class Client implements Runnable {
 			this.socketChannel = socketChannel;
 
 			// Connecting channel to certain hostname and port
-			this.socketChannel.connect(new InetSocketAddress(this.hostname, this.port));
-//			this.socketChannel.connect(new InetSocketAddress(InetAddress.getLocalHost(), this.port));
+			try {
+				InetSocketAddress ia = new InetSocketAddress(this.hostname, this.port);
+				this.socketChannel.connect(ia);
+//				this.socketChannel.connect(new InetSocketAddress(InetAddress.getLocalHost(), this.port));
+			} catch (Exception e) {
+				e.printStackTrace();
+				return;
+			}
+			
 
-			// Reading file in new thread
+
+			// Reading file
 			this.readFile();
 
 			// Reading packets until cancel packet occurs
@@ -123,8 +130,8 @@ public class Client implements Runnable {
 		// Reduce table size by removing done tasks when table size grow over 15
 		// key-value pars
 		try {
-			if (table.size() > 15)
-				for (Iterator<Entry<ScheduledHandler, ScheduledFuture<?>>> iterator = table.entrySet().iterator(); table
+			if (map.size() > 15)
+				for (Iterator<Entry<ScheduledHandler, ScheduledFuture<?>>> iterator = map.entrySet().iterator(); map
 						.entrySet().iterator().hasNext();) {
 					Entry<ScheduledHandler, ScheduledFuture<?>> entry = iterator.next();
 					if (entry.getValue().isDone()) {
@@ -135,7 +142,7 @@ public class Client implements Runnable {
 		}
 
 		// Insert new task in table
-		this.table.put(scheduledHandler, scheduledFuture);
+		this.map.put(scheduledHandler, scheduledFuture);
 	}
 
 	// Read rest 8 bytes of the packet
@@ -213,7 +220,7 @@ public class Client implements Runnable {
 			ByteBuffer buffer = this.getByteBuffer(24);
 			long currentTimestamp = System.currentTimeMillis();
 
-			this.table.forEach((scheduledHandler, scheduledFuture) -> {
+			this.map.forEach((scheduledHandler, scheduledFuture) -> {
 
 				// Save only ones which is not done
 				if (!scheduledFuture.isDone()) {
@@ -235,7 +242,7 @@ public class Client implements Runnable {
 			});
 
 			// Clear all table
-			this.table.clear();
+			this.map.clear();
 
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
